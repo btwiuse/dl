@@ -1,3 +1,3 @@
-module golang.org/dl
+module github.com/btwiuse/dl
 
 go 1.18

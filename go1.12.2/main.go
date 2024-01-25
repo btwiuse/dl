@@ -6,7 +6,7 @@
 //
 // To install, run:
 //
-//	$ go install golang.org/dl/go1.12.2@latest
+//	$ go install github.com/btwiuse/dl/go1.12.2@latest
 //	$ go1.12.2 download
 //
 // And then use the go1.12.2 command as if it were your normal go
@@ -17,7 +17,7 @@
 // File bugs at https://golang.org/issues/new
 package main
 
-import "golang.org/dl/internal/version"
+import "github.com/btwiuse/dl/version"
 
 func main() {
 	version.Run("go1.12.2")
