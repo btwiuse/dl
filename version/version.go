@@ -27,12 +27,13 @@ import (
 	"time"
 )
 
-func init() {
+func Init() {
 	http.DefaultTransport = &userAgentTransport{http.DefaultTransport}
 }
 
 // Run runs the "go" tool of the provided Go version.
 func Run(version string) {
+	Init()
 	log.SetFlags(0)
 
 	root, err := goroot(version)
