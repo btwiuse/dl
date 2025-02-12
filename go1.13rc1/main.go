@@ -6,7 +6,7 @@
 //
 // To install, run:
 //
-//	$ go install golang.org/dl/go1.13rc1@latest
+//	$ go install github.com/btwiuse/dl/go1.13rc1@latest
 //	$ go1.13rc1 download
 //
 // And then use the go1.13rc1 command as if it were your normal go
@@ -17,7 +17,7 @@
 // File bugs at https://golang.org/issues/new
 package main
 
-import "golang.org/dl/internal/version"
+import "github.com/btwiuse/dl/version"
 
 func main() {
 	version.Run("go1.13rc1")
