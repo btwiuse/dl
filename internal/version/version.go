@@ -157,7 +157,6 @@ func install(targetDir, version string, fn ArchiveURLFunc) error {
 			}
 		} else {
 			// Tar.gz: stream-decompress while saving archive to disk
-			log.Printf("Unpacking %v ...", archiveFile)
 			if err := streamUnpack(goURL, archiveFile, targetDir, contentLength); err != nil {
 				return fmt.Errorf("error downloading %v: %v", goURL, err)
 			}
@@ -171,7 +170,6 @@ func install(targetDir, version string, fn ArchiveURLFunc) error {
 		}
 	} else {
 		// Archive cached, unpack from disk
-		log.Printf("Unpacking %v ...", archiveFile)
 		if err := unpackArchive(targetDir, archiveFile); err != nil {
 			return fmt.Errorf("extracting archive %v: %v", archiveFile, err)
 		}
@@ -284,6 +282,7 @@ func unpackTarGzReader(targetDir string, r io.Reader) error {
 		mode := fi.Mode()
 		switch {
 		case mode.IsRegular():
+			log.Printf("%s", rel)
 			// Make the directory. This is redundant because it should
 			// already be made by a directory entry in the tar
 			// beforehand. Thus, don't check for errors; the next
