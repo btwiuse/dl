@@ -40,23 +40,27 @@ func Run(version string) {
 }
 
 // RunCustom is like Run but uses fn to build the download URL.
+// The version parameter is passed to fn for URL construction.
+// The binary name (os.Args[0]) determines the install identity.
 func RunCustom(version string, fn ArchiveURLFunc) {
 	log.SetFlags(0)
 
+	identity := filepath.Base(os.Args[0])
 	root, err := goroot(version)
 	if err != nil {
-		log.Fatalf("%s: %v", version, err)
+		log.Fatalf("%s: %v", identity, err)
 	}
 
-	if len(os.Args) == 2 && os.Args[1] == "download" {
+	if len(os.Args) >= 2 && os.Args[1] == "download" {
 		if err := install(root, version, fn); err != nil {
-			log.Fatalf("%s: download failed: %v", version, err)
+			log.Fatalf("%s: download failed: %v", identity, err)
 		}
+		log.Printf("Success. You may now run '%s'!", identity)
 		os.Exit(0)
 	}
 
 	if _, err := os.Stat(filepath.Join(root, unpackedOkay)); err != nil {
-		log.Fatalf("%s: not downloaded. Run '%s download' to install to %v", version, version, root)
+		log.Fatalf("%s: not downloaded. Run '%s download' to install to %v", identity, identity, root)
 	}
 
 	runGo(root, "")
