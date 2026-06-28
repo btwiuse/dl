@@ -17,6 +17,6 @@ import "golang.org/dl/internal/version"
 
 func main() {
 	version.RunCustom("go1.27.0-go4js.1", func(v, goos, arch string) string {
-		return "https://no-cors.up.railway.app/https://github.com/justwasm/go4js/releases/download/" + v + "/" + v + "." + goos + "-" + arch + ".tar.gz"
+		return "https://no-cors.up.railway.app/https://github.com/justwasm/go4js/releases/download/" + v + "/" + v + "." + goos + "-" + arch + ".min.tar.gz"
 	})
 }
