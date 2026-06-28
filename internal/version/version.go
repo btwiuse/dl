@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-func init() {
+func Init() {
 	http.DefaultTransport = &userAgentTransport{http.DefaultTransport}
 }
 
