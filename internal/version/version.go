@@ -141,24 +141,42 @@ func install(targetDir, version string, fn ArchiveURLFunc) error {
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("server returned %v checking size of %v", http.StatusText(res.StatusCode), goURL)
 	}
+	contentLength := res.ContentLength
 	base := path.Base(goURL)
 	archiveFile := filepath.Join(targetDir, base)
-	if fi, err := os.Stat(archiveFile); err != nil || fi.Size() != res.ContentLength {
-		if err != nil && !os.IsNotExist(err) {
-			// Something weird. Don't try to download.
-			return err
-		}
-		if err := copyFromURL(archiveFile, goURL); err != nil {
-			return fmt.Errorf("error downloading %v: %v", goURL, err)
+
+	// Check if archive is already cached
+	fi, err := os.Stat(archiveFile)
+	cached := err == nil && fi.Size() == contentLength
+
+	if !cached {
+		if strings.HasSuffix(goURL, ".zip") {
+			// Zip needs random access; download fully first
+			if err := copyFromURL(archiveFile, goURL); err != nil {
+				return fmt.Errorf("error downloading %v: %v", goURL, err)
+			}
+		} else {
+			// Tar.gz: stream-decompress while saving archive to disk
+			log.Printf("Unpacking %v ...", archiveFile)
+			if err := streamUnpack(goURL, archiveFile, targetDir, contentLength); err != nil {
+				return fmt.Errorf("error downloading %v: %v", goURL, err)
+			}
 		}
 		fi, err = os.Stat(archiveFile)
 		if err != nil {
 			return err
 		}
-		if fi.Size() != res.ContentLength {
-			return fmt.Errorf("downloaded file %s size %v doesn't match server size %v", archiveFile, fi.Size(), res.ContentLength)
+		if fi.Size() != contentLength {
+			return fmt.Errorf("downloaded file %s size %v doesn't match server size %v", archiveFile, fi.Size(), contentLength)
+		}
+	} else {
+		// Archive cached, unpack from disk
+		log.Printf("Unpacking %v ...", archiveFile)
+		if err := unpackArchive(targetDir, archiveFile); err != nil {
+			return fmt.Errorf("extracting archive %v: %v", archiveFile, err)
 		}
 	}
+
 	wantSHA, err := slurpURLToString(goURL + ".sha256")
 	if err != nil {
 		// If the server returns 404, the checksum file is not available.
@@ -171,14 +189,48 @@ func install(targetDir, version string, fn ArchiveURLFunc) error {
 	} else if err := verifySHA256(archiveFile, strings.TrimSpace(wantSHA)); err != nil {
 		return fmt.Errorf("error verifying SHA256 of %v: %v", archiveFile, err)
 	}
-	log.Printf("Unpacking %v ...", archiveFile)
-	if err := unpackArchive(targetDir, archiveFile); err != nil {
-		return fmt.Errorf("extracting archive %v: %v", archiveFile, err)
-	}
 	if err := os.WriteFile(filepath.Join(targetDir, unpackedOkay), nil, 0644); err != nil {
 		return err
 	}
 	log.Printf("Success. You may now run '%v'", version)
+	return nil
+}
+
+// streamUnpack streams a tar.gz from url, simultaneously saving the archive
+// to archiveFile and decompressing into targetDir.
+func streamUnpack(url, archiveFile, targetDir string, contentLength int64) error {
+	c := &http.Client{
+		Transport: &userAgentTransport{&http.Transport{
+			DisableCompression: true,
+			DisableKeepAlives:  true,
+			Proxy:              http.ProxyFromEnvironment,
+		}},
+	}
+	res, err := c.Get(url)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return errors.New(res.Status)
+	}
+
+	f, err := os.Create(archiveFile)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	pr := &progressReader{
+		r:      io.TeeReader(res.Body, f),
+		total:  contentLength,
+		output: os.Stderr,
+	}
+
+	if err := unpackTarGzReader(targetDir, pr); err != nil {
+		os.Remove(archiveFile)
+		return err
+	}
 	return nil
 }
 
@@ -202,6 +254,12 @@ func unpackTarGz(targetDir, archiveFile string) error {
 		return err
 	}
 	defer r.Close()
+	return unpackTarGzReader(targetDir, r)
+}
+
+// unpackTarGzReader unpacks a tar.gz stream from r into targetDir,
+// removing the "go/" prefix from file entries.
+func unpackTarGzReader(targetDir string, r io.Reader) error {
 	madeDir := map[string]bool{}
 	zr, err := gzip.NewReader(r)
 	if err != nil {
@@ -435,6 +493,42 @@ func (p *progressWriter) Write(buf []byte) (n int, err error) {
 		p.last = now
 	}
 	return
+}
+
+// progressReader wraps an io.Reader and reports download progress.
+type progressReader struct {
+	r         io.Reader
+	n         int64
+	total     int64
+	last      time.Time
+	formatted bool
+	output    io.Writer
+}
+
+func (p *progressReader) Read(buf []byte) (int, error) {
+	n, err := p.r.Read(buf)
+	p.n += int64(n)
+	if now := time.Now(); now.Unix() != p.last.Unix() {
+		p.update()
+		p.last = now
+	}
+	return n, err
+}
+
+func (p *progressReader) update() {
+	end := " ..."
+	if p.n == p.total {
+		end = ""
+	}
+	if p.formatted {
+		fmt.Fprintf(p.output, "Downloaded %5.1f%% (%s / %s)%s\n",
+			(100.0*float64(p.n))/float64(p.total),
+			fmtSize(p.n), fmtSize(p.total), end)
+	} else {
+		fmt.Fprintf(p.output, "Downloaded %5.1f%% (%*d / %d bytes)%s\n",
+			(100.0*float64(p.n))/float64(p.total),
+			ndigits(p.total), p.n, p.total, end)
+	}
 }
 
 // getOS returns runtime.GOOS. It exists as a function just for lazy
