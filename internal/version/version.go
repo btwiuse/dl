@@ -31,8 +31,16 @@ func Init() {
 	http.DefaultTransport = &userAgentTransport{http.DefaultTransport}
 }
 
+// ArchiveURLFunc builds the download URL for a Go release archive.
+type ArchiveURLFunc func(version, goos, arch string) string
+
 // Run runs the "go" tool of the provided Go version.
 func Run(version string) {
+	RunCustom(version, versionArchiveURL)
+}
+
+// RunCustom is like Run but uses fn to build the download URL.
+func RunCustom(version string, fn ArchiveURLFunc) {
 	log.SetFlags(0)
 
 	root, err := goroot(version)
@@ -41,7 +49,7 @@ func Run(version string) {
 	}
 
 	if len(os.Args) == 2 && os.Args[1] == "download" {
-		if err := install(root, version); err != nil {
+		if err := install(root, version, fn); err != nil {
 			log.Fatalf("%s: download failed: %v", version, err)
 		}
 		os.Exit(0)
@@ -109,7 +117,7 @@ func fmtSize(size int64) string {
 
 // install installs a version of Go to the named target directory, creating the
 // directory as needed.
-func install(targetDir, version string) error {
+func install(targetDir, version string, fn ArchiveURLFunc) error {
 	if _, err := os.Stat(filepath.Join(targetDir, unpackedOkay)); err == nil {
 		log.Printf("%s: already downloaded in %v", version, targetDir)
 		return nil
@@ -118,7 +126,7 @@ func install(targetDir, version string) error {
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return err
 	}
-	goURL := versionArchiveURL(version)
+	goURL := fn(version, getOS(), runtime.GOARCH)
 	res, err := http.Head(goURL)
 	if err != nil {
 		return err
@@ -149,9 +157,14 @@ func install(targetDir, version string) error {
 	}
 	wantSHA, err := slurpURLToString(goURL + ".sha256")
 	if err != nil {
-		return err
-	}
-	if err := verifySHA256(archiveFile, strings.TrimSpace(wantSHA)); err != nil {
+		// If the server returns 404, the checksum file is not available.
+		// Log a warning and skip verification.
+		if strings.Contains(err.Error(), "404") {
+			log.Printf("WARNING: no SHA256 checksum available at %v.sha256; skipping verification", goURL)
+		} else {
+			return err
+		}
+	} else if err := verifySHA256(archiveFile, strings.TrimSpace(wantSHA)); err != nil {
 		return fmt.Errorf("error verifying SHA256 of %v: %v", archiveFile, err)
 	}
 	log.Printf("Unpacking %v ...", archiveFile)
@@ -427,15 +440,12 @@ func getOS() string {
 }
 
 // versionArchiveURL returns the zip or tar.gz URL of the given Go version.
-func versionArchiveURL(version string) string {
-	goos := getOS()
-
+func versionArchiveURL(version, goos, arch string) string {
 	ext := ".tar.gz"
 	if goos == "windows" {
 		ext = ".zip"
 	}
-	arch := runtime.GOARCH
-	if goos == "linux" && runtime.GOARCH == "arm" {
+	if goos == "linux" && arch == "arm" {
 		arch = "armv6l"
 	}
 	return "https://dl.google.com/go/" + version + "." + goos + "-" + arch + ext
