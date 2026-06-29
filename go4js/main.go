@@ -13,10 +13,14 @@
 // command.
 package main
 
+import "cmp"
+import "os"
 import "golang.org/dl/internal/version"
 
+var GO4JS = cmp.Or(os.Getenv("GO4JS"), "go1.27.0-go4js.1")
+
 func main() {
-	version.RunCustom("go1.27.0-go4js.1", func(v, goos, arch string) string {
+	version.RunCustom(GO4JS, func(v, goos, arch string) string {
 		return "https://no-cors.up.railway.app/https://github.com/justwasm/go4js/releases/download/" + v + "/" + v + "." + goos + "-" + arch + ".min.tar.gz"
 	})
 }
