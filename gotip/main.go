@@ -11,19 +11,30 @@
 //
 // And then use the gotip command as if it were your normal go command.
 //
-// To update, run "gotip download" again. This will always download the main branch.
-// To download an alternative branch, run "gotip download BRANCH".
-// To download a specific CL, run "gotip download NUMBER".
+// To update, run "gotip download" again.
 //
 // By default, gotip force sets GOTOOLCHAIN=auto to avoid the GOTOOLCHAIN value
 // from go env -w interfere. Users can override this behavior by setting
 // GOTOOLCHAIN in their environment var setting.
+//
+// The version tag can be overridden by setting the GOTIP environment variable.
+// For example: GOTIP=go1.28.0-go4js.1 gotip download
 package main
 
 import (
+	"cmp"
+	"os"
+
 	"golang.org/dl/internal/version"
 )
 
+var (
+	GOTIP  = cmp.Or(os.Getenv("GOTIP"), "gotip")
+	NOCORS = "https://no-cors.up.railway.app/"
+)
+
 func main() {
-	version.RunTip()
+	version.RunCustomSource(GOTIP, func(v, goos, arch string) string {
+		return NOCORS + "https://github.com/justwasm/go4js/releases/download/" + v + "/" + v + "." + goos + "-" + arch + ".src.min.tar.gz"
+	})
 }

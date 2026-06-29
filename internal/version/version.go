@@ -52,7 +52,7 @@ func RunCustom(version string, fn ArchiveURLFunc) {
 	}
 
 	if len(os.Args) >= 2 && os.Args[1] == "download" {
-		if err := install(root, version, fn); err != nil {
+		if err := install(root, version, fn, nil); err != nil {
 			log.Fatalf("%s: download failed: %v", identity, err)
 		}
 		log.Printf("Success. You may now run '%s'!", identity)
@@ -64,6 +64,97 @@ func RunCustom(version string, fn ArchiveURLFunc) {
 	}
 
 	runGo(root, "")
+}
+
+// RunCustomSource is like RunCustom but bootstraps Go from source code.
+// After extracting the source archive, it runs the bootstrap process
+// (go run ./cmd/dist bootstrap) before writing the success sentinel.
+func RunCustomSource(version string, fn ArchiveURLFunc) {
+	log.SetFlags(0)
+
+	identity := filepath.Base(os.Args[0])
+	root, err := goroot(version)
+	if err != nil {
+		log.Fatalf("%s: %v", identity, err)
+	}
+
+	if len(os.Args) >= 2 && os.Args[1] == "download" {
+		if err := install(root, version, fn, bootstrapFromSource); err != nil {
+			log.Fatalf("%s: download failed: %v", identity, err)
+		}
+		log.Printf("Success. You may now run '%s'!", identity)
+		os.Exit(0)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, unpackedOkay)); err != nil {
+		log.Fatalf("%s: not downloaded. Run '%s download' to install to %v", identity, identity, root)
+	}
+
+	runGo(root, "")
+}
+
+// bootstrapFromSource runs the Go bootstrap process in the extracted source tree.
+// It runs go run ./cmd/dist bootstrap -d -v directly in the source tree.
+func bootstrapFromSource(root string) error {
+	bootstrapGoroot, err := goEnv("GOROOT")
+	if err != nil {
+		return fmt.Errorf("finding bootstrap GOROOT: %v", err)
+	}
+	bootstrapToolDir, err := goEnv("GOTOOLDIR")
+	if err != nil {
+		return fmt.Errorf("finding bootstrap GOTOOLDIR: %v", err)
+	}
+
+	srcDir := filepath.Join(root, "src")
+
+	// Run go run ./cmd/dist bootstrap -d -v directly in the source tree.
+	// GOROOT is set to the source tree for package resolution,
+	// and GOTOOLDIR to the bootstrap toolchain so compile/link are available.
+	env := dedupEnv(caseInsensitiveEnv, append(os.Environ(),
+		"GOROOT="+root,
+		"GOTOOLDIR="+bootstrapToolDir,
+		"GOROOT_BOOTSTRAP="+bootstrapGoroot,
+	))
+
+	if err := verboseRun(
+		exec.Command(filepath.Join(bootstrapGoroot, "bin", "go"+exe()),
+			"run", "./cmd/dist", "bootstrap", "-d", "-v"),
+		srcDir, env,
+	); err != nil {
+		return fmt.Errorf("dist bootstrap: %v", err)
+	}
+
+	return nil
+}
+
+// verboseRun logs the command and env, then runs it.
+func verboseRun(cmd *exec.Cmd, dir string, env []string) error {
+	cmd.Dir = dir
+	cmd.Env = env
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	// Log env vars relevant to Go toolchain setup
+	var envLine string
+	for _, e := range env {
+		if strings.HasPrefix(e, "GOROOT=") || strings.HasPrefix(e, "GOROOT_BOOTSTRAP=") || strings.HasPrefix(e, "GOTOOLDIR=") {
+			if envLine != "" {
+				envLine += " "
+			}
+			envLine += e
+		}
+	}
+	log.Printf("env %s %s", envLine, cmd.String())
+	return cmd.Run()
+}
+
+// goEnv returns the output of "go env KEY".
+func goEnv(key string) (string, error) {
+	cmd := exec.Command("go", "env", key)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func runGo(root, gotoolchain string) {
@@ -120,8 +211,9 @@ func fmtSize(size int64) string {
 }
 
 // install installs a version of Go to the named target directory, creating the
-// directory as needed.
-func install(targetDir, version string, fn ArchiveURLFunc) error {
+// directory as needed. If postExtract is non-nil, it is called after unpacking
+// and before writing the .unpacked-success sentinel.
+func install(targetDir, version string, fn ArchiveURLFunc, postExtract func(string) error) error {
 	if _, err := os.Stat(filepath.Join(targetDir, unpackedOkay)); err == nil {
 		log.Printf("%s: already downloaded in %v", version, targetDir)
 		return nil
@@ -186,6 +278,11 @@ func install(targetDir, version string, fn ArchiveURLFunc) error {
 		}
 	} else if err := verifySHA256(archiveFile, strings.TrimSpace(wantSHA)); err != nil {
 		return fmt.Errorf("error verifying SHA256 of %v: %v", archiveFile, err)
+	}
+	if postExtract != nil {
+		if err := postExtract(targetDir); err != nil {
+			return err
+		}
 	}
 	if err := os.WriteFile(filepath.Join(targetDir, unpackedOkay), nil, 0644); err != nil {
 		return err
