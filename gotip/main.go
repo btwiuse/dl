@@ -29,7 +29,7 @@ import (
 )
 
 var (
-	GOTIP  = cmp.Or(os.Getenv("GOTIP"), "gotip")
+	GOTIP  = cmp.Or(os.Getenv("GOTIP"), "go1.27.0-gotip.1")
 	NOCORS = "https://no-cors.up.railway.app/"
 )
 
