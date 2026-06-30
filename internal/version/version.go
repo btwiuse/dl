@@ -100,19 +100,13 @@ func bootstrapFromSource(root string) error {
 	if err != nil {
 		return fmt.Errorf("finding bootstrap GOROOT: %v", err)
 	}
-	bootstrapToolDir, err := goEnv("GOTOOLDIR")
-	if err != nil {
-		return fmt.Errorf("finding bootstrap GOTOOLDIR: %v", err)
-	}
 
 	srcDir := filepath.Join(root, "src")
 
 	// Run go run ./cmd/dist bootstrap -d -v directly in the source tree.
 	// GOROOT is set to the source tree for package resolution,
-	// and GOTOOLDIR to the bootstrap toolchain so compile/link are available.
 	env := dedupEnv(caseInsensitiveEnv, append(os.Environ(),
 		"GOROOT="+root,
-		"GOTOOLDIR="+bootstrapToolDir,
 		"GOROOT_BOOTSTRAP="+bootstrapGoroot,
 	))
 
@@ -136,7 +130,7 @@ func verboseRun(cmd *exec.Cmd, dir string, env []string) error {
 	// Log env vars relevant to Go toolchain setup
 	var envLine string
 	for _, e := range env {
-		if strings.HasPrefix(e, "GOROOT=") || strings.HasPrefix(e, "GOROOT_BOOTSTRAP=") || strings.HasPrefix(e, "GOTOOLDIR=") {
+		if strings.HasPrefix(e, "GOROOT=") || strings.HasPrefix(e, "GOROOT_BOOTSTRAP=") {
 			if envLine != "" {
 				envLine += " "
 			}
