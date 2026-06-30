@@ -118,7 +118,7 @@ func bootstrapFromSource(root string) error {
 
 	if err := verboseRun(
 		exec.Command(filepath.Join(bootstrapGoroot, "bin", "go"+exe()),
-			"run", "./cmd/dist", "bootstrap", "-d", "-v"),
+			"run", "./cmd/dist", "bootstrap", "-a", "-d", "-v"),
 		srcDir, env,
 	); err != nil {
 		return fmt.Errorf("dist bootstrap: %v", err)
